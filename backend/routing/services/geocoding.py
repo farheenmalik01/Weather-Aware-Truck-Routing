@@ -30,7 +30,27 @@ def geocode(query: str) -> list[Place]:
 
 def _photon(query: str) -> list[Place]:
     base = os.environ.get("PHOTON_BASE_URL", "https://photon.komoot.io").rstrip("/")
-    payload = get_json(f"{base}/api/", {"q": query, "limit": 6, "lang": "en"})
+    united = _photon_optional(base, query, {"bbox": "-125,24,-66,49.5"})
+    world = _photon_optional(base, query, {})
+    if united is None and world is None:
+        raise AppError(
+            "Place search is unavailable. Try again in a moment.",
+            code="GEOCODE_UNAVAILABLE",
+            status_code=502,
+        )
+    return _merge_places(united or [], world or [])[:6]
+
+
+def _photon_optional(base: str, query: str, extra: dict) -> list[Place] | None:
+    try:
+        return _photon_hits(base, query, extra)
+    except AppError as exc:
+        logger.warning("Photon search failed: %s", exc)
+        return None
+
+
+def _photon_hits(base: str, query: str, extra: dict) -> list[Place]:
+    payload = get_json(f"{base}/api/", {"q": query, "limit": 8, "lang": "en", **extra})
     places: list[Place] = []
     for feature in payload.get("features") or []:
         coordinates = (feature.get("geometry") or {}).get("coordinates") or []
@@ -41,6 +61,18 @@ def _photon(query: str) -> list[Place]:
         if label:
             places.append(Place(label=label, lat=lat, lon=lon))
     return places
+
+
+def _merge_places(preferred: list[Place], rest: list[Place]) -> list[Place]:
+    merged: list[Place] = []
+    seen: set[str] = set()
+    for place in [*preferred, *rest]:
+        key = place.label.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(place)
+    return merged
 
 
 def _nominatim(query: str) -> list[Place]:

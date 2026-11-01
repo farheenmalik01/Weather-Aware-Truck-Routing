@@ -4,7 +4,8 @@ from routing.domain import Place, RawRoute
 from routing.exceptions import AppError
 from routing.services.analysis import analyze
 from routing.services.scoring import FORECAST_HOURS
-from routing.services.weather import HourlySeries, _parse_series
+from routing.services.corridor import corridor_points
+from routing.services.weather import HourlySeries, _forecast_dates, _parse_series
 
 NOW = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
 DEPARTURE = datetime(2026, 11, 2, 15, 0, tzinfo=UTC)
@@ -138,6 +139,19 @@ def test_safer_slower_route_beats_a_faster_no_travel_route():
     assert result.all_routes_blocked is False
     assert "no-travel miles" in result.recommendation_reason
     assert any("ranked below" in warning for warning in result.warnings)
+
+
+def test_corridor_stays_on_the_road():
+    route = _raw(lat=32.0, miles=40, seconds=4000, summary="I 45")
+    points = corridor_points([route])
+    assert len(points) >= 3
+    assert all(abs(lat - 32.0) < 1e-6 for lat, _lon in points)
+
+
+def test_forecast_dates_cover_the_trip_and_not_the_whole_horizon():
+    start = DEPARTURE
+    end = DEPARTURE + timedelta(hours=48)
+    assert _forecast_dates(NOW, start, end) == ("2026-11-02", "2026-11-04")
 
 
 def test_departure_outside_the_forecast_window_is_rejected():

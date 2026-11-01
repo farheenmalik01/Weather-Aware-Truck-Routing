@@ -108,6 +108,30 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
   padding: 11px 12px;
   background: #f8fbfc;
 }
+.place-control { position: relative; }
+.place-control input { padding-right: 36px; }
+.place-chevron {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.place-chevron::before {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto 3px;
+  border-right: 2px solid #5e7082;
+  border-bottom: 2px solid #5e7082;
+  transform: rotate(45deg);
+}
+.place-field.open .place-chevron::before { transform: rotate(225deg); margin-top: 4px; }
 .field input:focus {
   outline: 3px solid rgba(29, 78, 137, 0.16);
   border-color: var(--focus);
@@ -169,23 +193,22 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 .primary:disabled { opacity: 0.7; cursor: progress; box-shadow: none; }
 
 .suggestions {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  position: fixed;
+  z-index: 40;
   margin: 0;
   padding: 6px;
   list-style: none;
   background: white;
-  border: 1px solid var(--line);
+  border: 1px solid #d5e0e8;
   border-radius: 12px;
-  box-shadow: var(--shadow);
-  max-height: 240px;
+  box-shadow: 0 16px 40px rgba(18, 40, 60, 0.16);
+  max-height: 280px;
   overflow: auto;
 }
 .suggestions button {
   width: 100%;
+  display: grid;
+  gap: 1px;
   text-align: left;
   border: 0;
   background: transparent;
@@ -194,7 +217,20 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
   font-size: 13px;
   line-height: 1.35;
 }
+.suggestions button strong { font-weight: 700; color: var(--ink); }
+.suggestions button span { color: var(--muted); font-size: 12px; }
+.suggestions button mark {
+  background: #fde7b0;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
 .suggestions button.active, .suggestions button:hover { background: #eef5fb; }
+.suggestion-note {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .empty-panel ol {
   margin: 12px 0 0;

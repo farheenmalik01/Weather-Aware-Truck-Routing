@@ -6,7 +6,6 @@ temperature are returned for the driver and are not part of the risk table.
 
 from __future__ import annotations
 
-import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -79,11 +78,11 @@ def fetch_forecast(
     """Return one hourly series per weather cell. Missing cells are omitted."""
     if not cells:
         return {}
-    past_days, forecast_days = _coverage(now, start, end)
+    start_date, end_date = _forecast_dates(now, start, end)
     found: dict[tuple[float, float], HourlySeries] = {}
     needed: list[tuple[float, float]] = []
     for cell in cells:
-        cached = _cache.get(_cache_key(cell, past_days, forecast_days, now))
+        cached = _cache.get(_cache_key(cell, start_date, end_date, now))
         if cached is None:
             needed.append(cell)
         else:
@@ -94,13 +93,11 @@ def fetch_forecast(
     chunks = [needed[index : index + CHUNK_SIZE] for index in range(0, len(needed), CHUNK_SIZE)]
     workers = min(4, len(chunks))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        groups = list(
-            pool.map(lambda chunk: _fetch_chunk(chunk, past_days, forecast_days), chunks)
-        )
+        groups = list(pool.map(lambda chunk: _fetch_chunk(chunk, start_date, end_date), chunks))
     for group in groups:
         for cell, series in group.items():
             found[cell] = series
-            _cache.set(_cache_key(cell, past_days, forecast_days, now), series)
+            _cache.set(_cache_key(cell, start_date, end_date, now), series)
     return found
 
 
@@ -124,8 +121,8 @@ def condition_label(code: int | None) -> str | None:
 
 def _fetch_chunk(
     cells: list[tuple[float, float]],
-    past_days: int,
-    forecast_days: int,
+    start_date: str,
+    end_date: str,
 ) -> dict[tuple[float, float], HourlySeries]:
     base = os.environ.get("OPEN_METEO_BASE_URL", "https://api.open-meteo.com").rstrip("/")
     params = {
@@ -137,8 +134,8 @@ def _fetch_chunk(
         "snowfall_unit": "inch",
         "temperature_unit": "fahrenheit",
         "timezone": "GMT",
-        "forecast_days": forecast_days,
-        "past_days": past_days,
+        "start_date": start_date,
+        "end_date": end_date,
     }
     payload = get_json(f"{base}/v1/forecast", params)
     records = _as_location_list(payload, len(cells))
@@ -203,21 +200,25 @@ def _as_location_list(payload: Any, count: int) -> list[dict]:
     )
 
 
-def _coverage(now: datetime, start: datetime, end: datetime) -> tuple[int, int]:
-    past_days = 1 if start.astimezone(UTC) < now.astimezone(UTC) - timedelta(hours=1) else 0
-    horizon_s = (end.astimezone(UTC) - now.astimezone(UTC)).total_seconds()
-    forecast_days = max(1, math.ceil(horizon_s / 86_400) + 1)
-    return past_days, min(16, forecast_days)
+def _forecast_dates(now: datetime, start: datetime, end: datetime) -> tuple[str, str]:
+    """Inclusive UTC dates that cover the trip, and nothing outside the model horizon."""
+    start_day = (start.astimezone(UTC) - timedelta(hours=1)).date()
+    end_day = (end.astimezone(UTC) + timedelta(hours=1)).date()
+    earliest = (now.astimezone(UTC) - timedelta(days=1)).date()
+    latest = (now.astimezone(UTC) + timedelta(days=16)).date()
+    start_day = min(max(start_day, earliest), latest)
+    end_day = min(max(end_day, start_day), latest)
+    return start_day.isoformat(), end_day.isoformat()
 
 
 def _cache_key(
     cell: tuple[float, float],
-    past_days: int,
-    forecast_days: int,
+    start_date: str,
+    end_date: str,
     now: datetime,
 ) -> tuple:
     hour = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
-    return (cell, past_days, forecast_days, hour)
+    return (cell, start_date, end_date, hour)
 
 
 def _hour_index(times: list[datetime], moment: datetime) -> int:

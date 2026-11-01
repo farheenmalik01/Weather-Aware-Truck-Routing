@@ -30,7 +30,7 @@ def fetch_driving(
 ) -> list[RawRoute]:
     params = {
         "overview": "full",
-        "geometries": "geojson",
+        "geometries": "polyline6",
         "steps": "true",
         "annotations": "distance,duration",
         "alternatives": "false" if alternatives is False else str(int(alternatives) if alternatives else 0),
@@ -85,8 +85,7 @@ def _bases() -> list[str]:
 
 
 def _parse_route(route: dict) -> RawRoute:
-    geometry = (route.get("geometry") or {}).get("coordinates") or []
-    coordinates = [(float(lon), float(lat)) for lon, lat in geometry]
+    coordinates = _coordinates(route.get("geometry"))
     if len(coordinates) < 2:
         raise AppError(
             "The routing service returned an empty path.",
@@ -115,6 +114,40 @@ def _parse_route(route: dict) -> RawRoute:
         segment_duration_s=durations,
         summary=_road_summary(legs),
     )
+
+
+def _coordinates(geometry) -> list[tuple[float, float]]:
+    if isinstance(geometry, str):
+        return decode_polyline(geometry, precision=6)
+    raw = (geometry or {}).get("coordinates") or []
+    return [(float(lon), float(lat)) for lon, lat in raw]
+
+
+def decode_polyline(encoded: str, precision: int = 6) -> list[tuple[float, float]]:
+    """Decode a Google polyline into (lon, lat) pairs."""
+    factor = 10**precision
+    values: list[int] = []
+    index = 0
+    length = len(encoded)
+    while index < length:
+        result = 0
+        shift = 0
+        while True:
+            chunk = ord(encoded[index]) - 63
+            index += 1
+            result |= (chunk & 0x1F) << shift
+            shift += 5
+            if chunk < 0x20:
+                break
+        values.append(~(result >> 1) if result & 1 else result >> 1)
+    coordinates: list[tuple[float, float]] = []
+    lat = 0
+    lon = 0
+    for cursor in range(0, len(values), 2):
+        lat += values[cursor]
+        lon += values[cursor + 1]
+        coordinates.append((lon / factor, lat / factor))
+    return coordinates
 
 
 def _road_summary(legs: list[dict]) -> str:

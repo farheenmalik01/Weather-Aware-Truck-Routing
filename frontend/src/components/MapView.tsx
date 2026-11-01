@@ -78,8 +78,8 @@ export function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    syncHeatmap(map, result, hour, showHeatmap);
-  }, [hour, result, showHeatmap]);
+    syncHeatmap(map, result, hour, showHeatmap, selectedRouteId);
+  }, [hour, result, showHeatmap, selectedRouteId]);
 
   useEffect(() => {
     const map = mapRef.current;

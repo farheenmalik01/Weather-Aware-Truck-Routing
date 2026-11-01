@@ -93,14 +93,7 @@ def analyze(
         )
 
     ranked, reason = rank_routes(options)
-    heatmap = [
-        HeatPoint(
-            lat=lat,
-            lon=lon,
-            risks=risks_by_hour(_series(series_by_cell, lat, lon), departure, load_lb),
-        )
-        for lat, lon in corridor
-    ]
+    heatmap = _heatmap(corridor, series_by_cell, departure, load_lb)
     result = Analysis(
         origin=origin,
         destination=destination,
@@ -167,6 +160,20 @@ def _cells(sampled, corridor: list[tuple[float, float]]) -> list[tuple[float, fl
         cell = weather_cell(lat, lon)
         seen[cell] = cell
     return list(seen)
+
+
+def _heatmap(corridor, series_by_cell, departure: datetime, load_lb: float) -> list[HeatPoint]:
+    codes_for_series: dict[int, list[int]] = {}
+    points: list[HeatPoint] = []
+    for lat, lon in corridor:
+        series = _series(series_by_cell, lat, lon)
+        key = id(series)
+        codes = codes_for_series.get(key)
+        if codes is None:
+            codes = risks_by_hour(series, departure, load_lb)
+            codes_for_series[key] = codes
+        points.append(HeatPoint(lat=lat, lon=lon, risks=codes))
+    return points
 
 
 def _series(series_by_cell: dict[tuple[float, float], HourlySeries], lat: float, lon: float) -> HourlySeries | None:
