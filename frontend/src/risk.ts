@@ -1,0 +1,44 @@
+import type { RiskName, RouteMetrics } from "./types";
+
+export const RISK_ORDER: RiskName[] = ["no_travel", "severe", "high", "moderate", "low"];
+
+export const RISK_COLORS: Record<RiskName, string> = {
+  low: "#1f7a45",
+  moderate: "#b58100",
+  high: "#d65a00",
+  severe: "#c4232c",
+  no_travel: "#6d28d9",
+};
+
+export const RISK_LABELS: Record<RiskName, string> = {
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+  severe: "Severe",
+  no_travel: "No travel",
+};
+
+export const HEAT_COLORS: Record<number, string> = {
+  1: RISK_COLORS.low,
+  2: RISK_COLORS.moderate,
+  3: RISK_COLORS.high,
+  4: RISK_COLORS.severe,
+  5: RISK_COLORS.no_travel,
+};
+
+export function milesFor(metrics: RouteMetrics, key: RiskName | "unknown"): number {
+  switch (key) {
+    case "no_travel":
+      return metrics.no_travel_miles;
+    case "severe":
+      return metrics.severe_miles;
+    case "high":
+      return metrics.high_miles;
+    case "moderate":
+      return metrics.moderate_miles;
+    case "low":
+      return metrics.low_miles;
+    case "unknown":
+      return metrics.unknown_miles;
+  }
+}
