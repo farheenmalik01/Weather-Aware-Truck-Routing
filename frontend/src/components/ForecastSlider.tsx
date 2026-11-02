@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { forecastStamp } from "../format";
 import { useTripStore } from "../store";
 
+export const PLAY_STEP_MS = 480;
+
 export function ForecastSlider() {
   const result = useTripStore((state) => state.result);
   const hour = useTripStore((state) => state.forecastHour);
@@ -22,7 +24,7 @@ export function ForecastSlider() {
         return;
       }
       state.setForecastHour(state.forecastHour + 1);
-    }, 480);
+    }, PLAY_STEP_MS);
     return () => window.clearInterval(timer);
   }, [playing, result]);
 

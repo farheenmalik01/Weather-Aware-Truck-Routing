@@ -93,4 +93,4 @@ Optional environment variables: `OSRM_BASE_URL`, `PHOTON_BASE_URL`, `OPEN_METEO_
 
 `backend/routing/services` holds the rules. Views validate input and return JSON. `risk.py`, `sampling.py`, `metrics.py`, and `recommendation.py` do not call the network, and the tests cover the band edges, the load cutovers, ETA interpolation, and the ranking order.
 
-The UI keeps the map instance alive. Route selection updates line width and checkpoint emphasis. The forecast slider updates the corridor source only.
+The UI keeps the map instance alive. Selecting a route fades the others and frames the stretch where that road leaves them. The forecast slider replaces the corridor points for that hour only, so scrubbing does not restyle the map or call the API again.

@@ -11,12 +11,21 @@ export function addLayers(map: MapLibreMap): void {
   map.addSource("routes", { type: "geojson", data: EMPTY });
   map.addSource("checkpoints", { type: "geojson", data: EMPTY });
 
-  map.addLayer({
-    id: "corridor-heat",
-    type: "heatmap",
-    source: "corridor",
-    paint: heatPaint(false),
-  });
+  for (const risk of HEAT_RISKS) {
+    map.addLayer({
+      id: heatLayerId(risk),
+      type: "heatmap",
+      source: "corridor",
+      filter: ["==", ["get", "risk"], risk],
+      paint: {
+        "heatmap-weight": 1,
+        "heatmap-intensity": 1.15,
+        "heatmap-radius": heatRadius(false),
+        "heatmap-opacity": 0.95,
+        "heatmap-color": heatColor(HEAT_COLORS[risk]),
+      },
+    });
+  }
 
   map.addLayer({
     id: "routes-casing",
@@ -26,7 +35,7 @@ export function addLayers(map: MapLibreMap): void {
     paint: {
       "line-color": "#ffffff",
       "line-width": ["interpolate", ["linear"], ["zoom"], 5, ["case", ["==", ["get", "selected"], 1], 8, 6], 12, ["case", ["==", ["get", "selected"], 1], 13, 9]],
-      "line-opacity": ["case", ["==", ["get", "selected"], 1], 1, 0.9],
+      "line-opacity": ["case", ["==", ["get", "selected"], 1], 1, 0.35],
     },
   });
 
@@ -38,7 +47,7 @@ export function addLayers(map: MapLibreMap): void {
     paint: {
       "line-color": ["get", "color"],
       "line-width": ["interpolate", ["linear"], ["zoom"], 5, ["case", ["==", ["get", "selected"], 1], 5, 3.5], 12, ["case", ["==", ["get", "selected"], 1], 8, 5.5]],
-      "line-opacity": ["case", ["==", ["get", "selected"], 1], 1, 0.9],
+      "line-opacity": ["case", ["==", ["get", "selected"], 1], 1, 0.4],
     },
   });
 
@@ -93,14 +102,21 @@ export function syncHeatmap(
   playing = false,
 ): void {
   setData(map, "corridor", result && showHeatmap ? heatPoints(result, hour) : EMPTY);
-  if (!map.getLayer("corridor-heat")) return;
-  map.setLayoutProperty("corridor-heat", "visibility", showHeatmap && result ? "visible" : "none");
-  const paint = heatPaint(playing);
-  map.setPaintProperty("corridor-heat", "heatmap-weight", paint["heatmap-weight"]);
-  map.setPaintProperty("corridor-heat", "heatmap-radius", paint["heatmap-radius"]);
-  map.setPaintProperty("corridor-heat", "heatmap-opacity", paint["heatmap-opacity"]);
-  map.setPaintProperty("corridor-heat", "heatmap-intensity", paint["heatmap-intensity"]);
-  map.setPaintProperty("corridor-heat", "heatmap-color", paint["heatmap-color"]);
+  const visible = showHeatmap && result ? "visible" : "none";
+  for (const risk of HEAT_RISKS) {
+    const layerId = heatLayerId(risk);
+    if (!map.getLayer(layerId)) continue;
+    map.setLayoutProperty(layerId, "visibility", visible);
+  }
+  if (heatPlaying === playing) return;
+  heatPlaying = playing;
+  for (const risk of HEAT_RISKS) {
+    const layerId = heatLayerId(risk);
+    if (!map.getLayer(layerId)) continue;
+    map.setPaintProperty(layerId, "heatmap-radius", heatRadius(playing));
+    map.setPaintProperty(layerId, "heatmap-opacity", playing ? 1 : 0.95);
+    map.setPaintProperty(layerId, "heatmap-intensity", playing ? 1.35 : 1.15);
+  }
 }
 
 export function playheadLngLat(result: Analysis, selectedRouteId: string | null, hour: number): [number, number] | null {
@@ -118,8 +134,8 @@ export function fitResult(map: MapLibreMap, result: Analysis): void {
   fitCoordinates(map, coordinates);
 }
 
-export function fitRoute(map: MapLibreMap, route: RouteOption): void {
-  fitCoordinates(map, route.geometry);
+export function fitRoute(map: MapLibreMap, route: RouteOption, routes: RouteOption[]): void {
+  fitCoordinates(map, distinctiveStretch(route, routes), true);
 }
 
 export function popupNode(feature: MapGeoJSONFeature): HTMLElement {
@@ -146,46 +162,47 @@ export function popupNode(feature: MapGeoJSONFeature): HTMLElement {
   return root;
 }
 
-function heatPaint(playing: boolean) {
-  // One density field, as in the MapLibre heatmap example: weight carries the
-  // risk, and the ramp starts transparent so the edge fades. The radius is
-  // wide enough for samples miles apart to merge into one cloud. Colors follow
-  // a weather-radar scale so the core matches the legend.
-  const radius = (
-    playing
-      ? ["interpolate", ["linear"], ["zoom"], 4, 40, 7, 64, 10, 86, 13, 108]
-      : ["interpolate", ["linear"], ["zoom"], 4, 32, 7, 52, 10, 72, 13, 92]
-  ) as ExpressionSpecification;
-  const intensity = playing ? 1.35 : 1.2;
-  const colorRamp = [
+const HEAT_RISKS = [1, 2, 3, 4, 5] as const;
+
+// Pixel radius of one forecast sample at each zoom. Samples are 4–10 miles
+// apart, so the radius tracks that gap: wide enough to meet, and not so wide
+// that the band covers the map. Each risk is its own layer, so overlap cannot
+// paint a worse color than the forecast.
+const CORRIDOR_RADIUS_PX = {
+  zoom: [5, 7, 9, 11, 13],
+  still: [16, 26, 80, 180, 240],
+  playing: [18, 30, 96, 200, 260],
+} as const;
+
+let heatPlaying = false;
+
+function heatLayerId(risk: number): string {
+  return `heat-${risk}`;
+}
+
+function heatRadius(playing: boolean): ExpressionSpecification {
+  const pixels = playing ? CORRIDOR_RADIUS_PX.playing : CORRIDOR_RADIUS_PX.still;
+  const expression: Array<string | number | string[]> = ["interpolate", ["linear"], ["zoom"]];
+  CORRIDOR_RADIUS_PX.zoom.forEach((zoom, index) => {
+    expression.push(zoom, pixels[index]);
+  });
+  return expression as ExpressionSpecification;
+}
+
+function heatColor(color: string): ExpressionSpecification {
+  return [
     "interpolate",
     ["linear"],
     ["heatmap-density"],
     0,
-    "rgba(31,122,69,0)",
-    0.04,
-    withAlpha(HEAT_COLORS[1], 0.9),
-    0.1,
-    HEAT_COLORS[1],
-    0.7,
-    HEAT_COLORS[1],
-    0.8,
-    HEAT_COLORS[2],
-    0.88,
-    HEAT_COLORS[3],
-    0.94,
-    HEAT_COLORS[4],
+    "rgba(0,0,0,0)",
+    0.08,
+    withAlpha(color, 0.8),
+    0.3,
+    color,
     1,
-    HEAT_COLORS[5],
+    color,
   ] as ExpressionSpecification;
-  const weight = ["interpolate", ["linear"], ["get", "risk"], 1, 0.2, 2, 0.55, 3, 0.7, 4, 0.84, 5, 1] as ExpressionSpecification;
-  return {
-    "heatmap-weight": weight,
-    "heatmap-intensity": intensity,
-    "heatmap-radius": radius,
-    "heatmap-opacity": 1,
-    "heatmap-color": colorRamp,
-  };
 }
 
 function withAlpha(hex: string, alpha: number): string {
@@ -311,7 +328,7 @@ function setData(map: MapLibreMap, sourceId: string, data: GeoJSON.FeatureCollec
   source?.setData(data);
 }
 
-function fitCoordinates(map: MapLibreMap, coordinates: number[][]): void {
+function fitCoordinates(map: MapLibreMap, coordinates: number[][], tight = false): void {
   if (coordinates.length === 0) return;
   let minLon = coordinates[0][0];
   let maxLon = coordinates[0][0];
@@ -328,8 +345,55 @@ function fitCoordinates(map: MapLibreMap, coordinates: number[][]): void {
       [minLon, minLat],
       [maxLon, maxLat],
     ],
-    { padding: { top: 72, right: 56, bottom: 150, left: 56 }, duration: 700, maxZoom: 9 },
+    {
+      padding: tight
+        ? { top: 80, right: 48, bottom: 120, left: 48 }
+        : { top: 72, right: 56, bottom: 150, left: 56 },
+      duration: 700,
+      maxZoom: tight ? 12 : 9,
+    },
   );
+}
+
+const FOCUS_WINDOW_MILES = 18;
+
+function distinctiveStretch(route: RouteOption, routes: RouteOption[]): number[][] {
+  const line = route.geometry;
+  const others = routes.filter((item) => item.id !== route.id).flatMap((item) => item.geometry);
+  if (others.length === 0 || line.length < 2) return line;
+  let farthest = 0;
+  let farthestMiles = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    const miles = nearestMiles(line[index], others);
+    if (miles > farthestMiles) {
+      farthestMiles = miles;
+      farthest = index;
+    }
+  }
+  if (farthestMiles < 0.4) return line;
+  const chosen = [line[farthest]];
+  let walked = 0;
+  for (let index = farthest; index > 0 && walked < FOCUS_WINDOW_MILES; index -= 1) {
+    walked += milesBetween(line[index], line[index - 1]);
+    chosen.push(line[index - 1]);
+  }
+  walked = 0;
+  for (let index = farthest; index < line.length - 1 && walked < FOCUS_WINDOW_MILES; index += 1) {
+    walked += milesBetween(line[index], line[index + 1]);
+    chosen.push(line[index + 1]);
+  }
+  return chosen;
+}
+
+function nearestMiles(coord: number[], others: number[][]): number {
+  let best = Infinity;
+  for (const other of others) {
+    const span = Math.max(Math.abs(other[0] - coord[0]), Math.abs(other[1] - coord[1]));
+    if (span * 69 > 3) continue;
+    const miles = milesBetween(coord, other);
+    if (miles < best) best = miles;
+  }
+  return best;
 }
 
 function addRow(root: HTMLElement, label: string, value: string): void {

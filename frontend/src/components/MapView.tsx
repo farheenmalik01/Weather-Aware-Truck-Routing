@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { forecastStamp } from "../format";
+import { PLAY_STEP_MS } from "./ForecastSlider";
 import { addLayers, fitResult, fitRoute, playheadLngLat, popupNode, syncHeatmap, syncMap } from "../map/layers";
 import { useTripStore } from "../store";
 import type { Analysis, Place } from "../types";
@@ -91,23 +92,36 @@ export function MapView() {
       playheadRef.current = null;
       return;
     }
-    const lngLat = playheadLngLat(result, selectedRouteId, hour);
-    if (!lngLat) return;
-    if (!playheadRef.current) {
-      const dot = document.createElement("div");
-      dot.className = "playhead";
-      playheadRef.current = new maplibregl.Marker({ element: dot }).setLngLat(lngLat).addTo(map);
-    } else {
-      playheadRef.current.setLngLat(lngLat);
-    }
-    playheadRef.current.getElement().classList.toggle("playing", playing);
+    let frame = 0;
+    const place = (at: number) => {
+      const lngLat = playheadLngLat(result, selectedRouteId, at);
+      if (!lngLat) return;
+      if (!playheadRef.current) {
+        const dot = document.createElement("div");
+        dot.className = "playhead";
+        playheadRef.current = new maplibregl.Marker({ element: dot }).setLngLat(lngLat).addTo(map);
+      } else {
+        playheadRef.current.setLngLat(lngLat);
+      }
+      playheadRef.current.getElement().classList.toggle("playing", playing);
+    };
+    place(hour);
+    if (!playing || hour >= result.hour_count - 1) return;
+    const started = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - started) / PLAY_STEP_MS);
+      place(hour + t);
+      if (t < 1) frame = window.requestAnimationFrame(step);
+    };
+    frame = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(frame);
   }, [hour, result, showHeatmap, selectedRouteId, playing, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current || !zoomRouteId || !result) return;
     const route = result.routes.find((item) => item.id === zoomRouteId);
-    if (route) fitRoute(map, route);
+    if (route) fitRoute(map, route, result.routes);
     useTripStore.getState().clearZoom();
   }, [zoomRouteId, result]);
 
