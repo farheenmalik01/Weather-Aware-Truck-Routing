@@ -1,8 +1,20 @@
 import { formatDuration, formatMiles } from "../format";
 import type { Analysis } from "../types";
 
+const RULES: { label: string; key: string; value: (route: Analysis["routes"][number]) => string }[] = [
+  { label: "No-travel mi", key: "no-travel miles", value: (route) => formatMiles(route.metrics.no_travel_miles) },
+  { label: "Severe mi", key: "severe miles", value: (route) => formatMiles(route.metrics.severe_miles) },
+  { label: "High mi", key: "high miles", value: (route) => formatMiles(route.metrics.high_miles) },
+  { label: "Missing mi", key: "miles with missing weather", value: (route) => formatMiles(route.metrics.unknown_miles) },
+  {
+    label: "Avg risk",
+    key: "average risk",
+    value: (route) => (route.metrics.average_risk === null ? "—" : route.metrics.average_risk.toFixed(2)),
+  },
+  { label: "Time", key: "travel time", value: (route) => formatDuration(route.duration_seconds) },
+];
+
 export function ComparisonTable({ result }: { result: Analysis }) {
-  const showUnknown = result.routes.some((route) => route.metrics.unknown_miles > 0.05);
   return (
     <div className="comparison panel">
       <h2>Ranking</h2>
@@ -18,19 +30,14 @@ export function ComparisonTable({ result }: { result: Analysis }) {
           </tr>
         </thead>
         <tbody>
-          <Row label="No-travel mi" values={result.routes.map((route) => formatMiles(route.metrics.no_travel_miles))} />
-          <Row label="Severe mi" values={result.routes.map((route) => formatMiles(route.metrics.severe_miles))} />
-          <Row label="High mi" values={result.routes.map((route) => formatMiles(route.metrics.high_miles))} />
-          {showUnknown && (
-            <Row label="Unknown" values={result.routes.map((route) => formatMiles(route.metrics.unknown_miles))} />
-          )}
-          <Row
-            label="Avg risk"
-            values={result.routes.map((route) =>
-              route.metrics.average_risk === null ? "—" : route.metrics.average_risk.toFixed(2),
-            )}
-          />
-          <Row label="Time" values={result.routes.map((route) => formatDuration(route.duration_seconds))} />
+          {RULES.map((rule) => (
+            <Row
+              key={rule.key}
+              label={rule.label}
+              decided={result.recommendation_reason.includes(`on ${rule.key}`)}
+              values={result.routes.map((route) => rule.value(route))}
+            />
+          ))}
         </tbody>
       </table>
       <ol className="criteria">
@@ -42,9 +49,9 @@ export function ComparisonTable({ result }: { result: Analysis }) {
   );
 }
 
-function Row({ label, values }: { label: string; values: string[] }) {
+function Row({ label, values, decided }: { label: string; values: string[]; decided: boolean }) {
   return (
-    <tr>
+    <tr className={decided ? "decided" : undefined}>
       <th scope="row">{label}</th>
       {values.map((value, index) => (
         <td key={`${label}-${index}`}>{value}</td>

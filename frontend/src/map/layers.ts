@@ -19,9 +19,9 @@ export function addLayers(map: MapLibreMap): void {
       filter: ["==", ["get", "risk"], risk],
       paint: {
         "heatmap-weight": 1,
-        "heatmap-intensity": 1.15,
+        "heatmap-intensity": 0.85,
         "heatmap-radius": heatRadius(false),
-        "heatmap-opacity": 0.95,
+        "heatmap-opacity": 0.8,
         "heatmap-color": heatColor(HEAT_COLORS[risk]),
       },
     });
@@ -114,8 +114,8 @@ export function syncHeatmap(
     const layerId = heatLayerId(risk);
     if (!map.getLayer(layerId)) continue;
     map.setPaintProperty(layerId, "heatmap-radius", heatRadius(playing));
-    map.setPaintProperty(layerId, "heatmap-opacity", playing ? 1 : 0.95);
-    map.setPaintProperty(layerId, "heatmap-intensity", playing ? 1.35 : 1.15);
+    map.setPaintProperty(layerId, "heatmap-opacity", playing ? 0.9 : 0.8);
+    map.setPaintProperty(layerId, "heatmap-intensity", playing ? 1 : 0.85);
   }
 }
 
@@ -164,14 +164,13 @@ export function popupNode(feature: MapGeoJSONFeature): HTMLElement {
 
 const HEAT_RISKS = [1, 2, 3, 4, 5] as const;
 
-// Pixel radius of one forecast sample at each zoom. Samples are 4–10 miles
-// apart, so the radius tracks that gap: wide enough to meet, and not so wide
-// that the band covers the map. Each risk is its own layer, so overlap cannot
-// paint a worse color than the forecast.
+// On-screen radius of one forecast sample. Kept to a few miles of road so
+// neighboring samples meet in a ribbon. A short trip is drawn at a higher
+// zoom, and a large pixel radius there becomes the county-sized blobs.
 const CORRIDOR_RADIUS_PX = {
-  zoom: [5, 7, 9, 11, 13],
-  still: [16, 26, 80, 180, 240],
-  playing: [18, 30, 96, 200, 260],
+  zoom: [6, 8, 10, 12],
+  still: [18, 32, 48, 70],
+  playing: [20, 36, 54, 78],
 } as const;
 
 let heatPlaying = false;
@@ -196,9 +195,9 @@ function heatColor(color: string): ExpressionSpecification {
     ["heatmap-density"],
     0,
     "rgba(0,0,0,0)",
-    0.08,
-    withAlpha(color, 0.8),
-    0.3,
+    0.15,
+    withAlpha(color, 0.35),
+    0.55,
     color,
     1,
     color,
@@ -355,34 +354,23 @@ function fitCoordinates(map: MapLibreMap, coordinates: number[][], tight = false
   );
 }
 
-const FOCUS_WINDOW_MILES = 18;
+const SAME_ROAD_MILES = 0.4;
 
 function distinctiveStretch(route: RouteOption, routes: RouteOption[]): number[][] {
   const line = route.geometry;
   const others = routes.filter((item) => item.id !== route.id).flatMap((item) => item.geometry);
   if (others.length === 0 || line.length < 2) return line;
+  const separation = line.map((coord) => nearestMiles(coord, others));
   let farthest = 0;
-  let farthestMiles = 0;
-  for (let index = 0; index < line.length; index += 1) {
-    const miles = nearestMiles(line[index], others);
-    if (miles > farthestMiles) {
-      farthestMiles = miles;
-      farthest = index;
-    }
+  for (let index = 1; index < separation.length; index += 1) {
+    if (separation[index] > separation[farthest]) farthest = index;
   }
-  if (farthestMiles < 0.4) return line;
+  if (separation[farthest] < SAME_ROAD_MILES) return line;
+  const apart = Math.max(SAME_ROAD_MILES, separation[farthest] / 2);
   const chosen = [line[farthest]];
-  let walked = 0;
-  for (let index = farthest; index > 0 && walked < FOCUS_WINDOW_MILES; index -= 1) {
-    walked += milesBetween(line[index], line[index - 1]);
-    chosen.push(line[index - 1]);
-  }
-  walked = 0;
-  for (let index = farthest; index < line.length - 1 && walked < FOCUS_WINDOW_MILES; index += 1) {
-    walked += milesBetween(line[index], line[index + 1]);
-    chosen.push(line[index + 1]);
-  }
-  return chosen;
+  for (let index = farthest; index > 0 && separation[index - 1] >= apart; index -= 1) chosen.push(line[index - 1]);
+  for (let index = farthest; index < line.length - 1 && separation[index + 1] >= apart; index += 1) chosen.push(line[index + 1]);
+  return chosen.length >= 2 ? chosen : line;
 }
 
 function nearestMiles(coord: number[], others: number[][]): number {

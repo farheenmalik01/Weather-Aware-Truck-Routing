@@ -321,6 +321,9 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 }
 .comparison th:first-child { text-align: left; color: var(--muted); font-weight: 600; }
 .comparison thead th { color: var(--navy); font-size: 12px; }
+.comparison tr.decided th,
+.comparison tr.decided td { background: #e7f2ea; font-weight: 700; }
+.comparison tr.decided th:first-child::after { content: " · decides"; font-weight: 600; color: #1f7a45; }
 .criteria {
   margin: 0;
   padding-left: 18px;

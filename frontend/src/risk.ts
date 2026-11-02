@@ -26,6 +26,23 @@ export const HEAT_COLORS: Record<number, string> = {
   5: RISK_COLORS.no_travel,
 };
 
+const HEAT_NAMES = ["", "low", "moderate", "high", "severe", "no-travel"];
+
+export function hourSummary(codes: number[]): string {
+  const counts = [0, 0, 0, 0, 0, 0];
+  for (const code of codes) {
+    if (code >= 1 && code <= 5) counts[code] += 1;
+  }
+  const known = counts.reduce((sum, count) => sum + count, 0);
+  if (known === 0) return "No forecast";
+  if (counts[1] === known) return "All low";
+  const parts: string[] = [];
+  for (let code = 5; code >= 1; code -= 1) {
+    if (counts[code] > 0) parts.push(`${counts[code]} ${HEAT_NAMES[code]}`);
+  }
+  return parts.join(" · ");
+}
+
 export function milesFor(metrics: RouteMetrics, key: RiskName | "unknown"): number {
   switch (key) {
     case "no_travel":

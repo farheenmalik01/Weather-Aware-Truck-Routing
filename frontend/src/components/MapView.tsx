@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { forecastStamp } from "../format";
+import { hourSummary } from "../risk";
 import { PLAY_STEP_MS } from "./ForecastSlider";
 import { addLayers, fitResult, fitRoute, playheadLngLat, popupNode, syncHeatmap, syncMap } from "../map/layers";
 import { useTripStore } from "../store";
@@ -131,6 +132,7 @@ export function MapView() {
       {result && showHeatmap && (
         <div key={hour} className={`hour-badge${playing ? " playing" : ""}`}>
           <strong>+{hour}h</strong>
+          <span>{hourSummary(result.heatmap.map((point) => point.risks[hour] ?? 0))}</span>
           <span>{forecastStamp(result.departure, hour)}</span>
         </div>
       )}
