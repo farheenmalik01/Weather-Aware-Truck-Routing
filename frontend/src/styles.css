@@ -459,7 +459,7 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 .legend-ramp {
   height: 8px;
   border-radius: 99px;
-  background: linear-gradient(90deg, rgba(31, 122, 69, 0.35), #1f7a45 22%, #b58100 46%, #d65a00 66%, #c4232c 82%, #6d28d9);
+  background: linear-gradient(90deg, rgba(31, 122, 69, 0.9), #1f7a45 10%, #1f7a45 70%, #b58100 80%, #d65a00 88%, #c4232c 94%, #6d28d9);
 }
 .legend ul { display: flex; justify-content: space-between; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .legend li { font-size: 11px; font-weight: 600; }

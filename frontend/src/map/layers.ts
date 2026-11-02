@@ -96,9 +96,11 @@ export function syncHeatmap(
   if (!map.getLayer("corridor-heat")) return;
   map.setLayoutProperty("corridor-heat", "visibility", showHeatmap && result ? "visible" : "none");
   const paint = heatPaint(playing);
+  map.setPaintProperty("corridor-heat", "heatmap-weight", paint["heatmap-weight"]);
   map.setPaintProperty("corridor-heat", "heatmap-radius", paint["heatmap-radius"]);
   map.setPaintProperty("corridor-heat", "heatmap-opacity", paint["heatmap-opacity"]);
   map.setPaintProperty("corridor-heat", "heatmap-intensity", paint["heatmap-intensity"]);
+  map.setPaintProperty("corridor-heat", "heatmap-color", paint["heatmap-color"]);
 }
 
 export function playheadLngLat(result: Analysis, selectedRouteId: string | null, hour: number): [number, number] | null {
@@ -151,37 +153,37 @@ function heatPaint(playing: boolean) {
   // a weather-radar scale so the core matches the legend.
   const radius = (
     playing
-      ? ["interpolate", ["linear"], ["zoom"], 4, 28, 7, 46, 10, 64, 13, 80]
-      : ["interpolate", ["linear"], ["zoom"], 4, 20, 7, 36, 10, 52, 13, 68]
+      ? ["interpolate", ["linear"], ["zoom"], 4, 40, 7, 64, 10, 86, 13, 108]
+      : ["interpolate", ["linear"], ["zoom"], 4, 32, 7, 52, 10, 72, 13, 92]
   ) as ExpressionSpecification;
-  const intensity = playing ? 1.35 : 1.05;
+  const intensity = playing ? 1.35 : 1.2;
   const colorRamp = [
     "interpolate",
     ["linear"],
     ["heatmap-density"],
     0,
-    "rgba(33,102,172,0)",
-    0.12,
-    withAlpha(HEAT_COLORS[1], 0.45),
-    0.28,
+    "rgba(31,122,69,0)",
+    0.04,
+    withAlpha(HEAT_COLORS[1], 0.9),
+    0.1,
     HEAT_COLORS[1],
-    0.46,
+    0.7,
     HEAT_COLORS[1],
-    0.6,
+    0.8,
     HEAT_COLORS[2],
-    0.74,
-    HEAT_COLORS[3],
     0.88,
+    HEAT_COLORS[3],
+    0.94,
     HEAT_COLORS[4],
     1,
     HEAT_COLORS[5],
   ] as ExpressionSpecification;
-  const weight = ["interpolate", ["linear"], ["get", "risk"], 1, 0.28, 2, 0.42, 3, 0.58, 4, 0.78, 5, 1] as ExpressionSpecification;
+  const weight = ["interpolate", ["linear"], ["get", "risk"], 1, 0.2, 2, 0.55, 3, 0.7, 4, 0.84, 5, 1] as ExpressionSpecification;
   return {
     "heatmap-weight": weight,
     "heatmap-intensity": intensity,
     "heatmap-radius": radius,
-    "heatmap-opacity": playing ? 0.92 : 0.8,
+    "heatmap-opacity": 1,
     "heatmap-color": colorRamp,
   };
 }
