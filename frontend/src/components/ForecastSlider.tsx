@@ -1,7 +1,8 @@
 import { forecastStamp } from "../format";
 import { useTripStore } from "../store";
 
-export const PLAY_STEP_MS = 220;
+// One forecast hour on screen. Long enough to read the badge, while the marker keeps gliding.
+export const PLAY_STEP_MS = 1000;
 
 export function ForecastSlider() {
   const result = useTripStore((state) => state.result);

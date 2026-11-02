@@ -45,7 +45,7 @@ export function MapView() {
       readyRef.current = true;
       setMapReady(true);
       const state = useTripStore.getState();
-      syncMap(map, state.result, state.selectedRouteId, state.forecastHour, state.showHeatmap, state.playing);
+      syncMap(map, state.result, state.selectedRouteId, state.forecastHour, state.showHeatmap);
       if (state.result) {
         markersRef.current = placePins(map, markersRef.current, state.result);
         fitResult(map, state.result);
@@ -70,7 +70,7 @@ export function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    syncMap(map, result, selectedRouteId, hour, showHeatmap, playing);
+    syncMap(map, result, selectedRouteId, hour, showHeatmap);
     if (!result) {
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
@@ -84,13 +84,13 @@ export function MapView() {
       fitResult(map, result);
     }
     // Hour changes repaint only the corridor, in the effect below.
-  }, [result, selectedRouteId, showHeatmap, playing]);
+  }, [result, selectedRouteId, showHeatmap]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncHeatmap(map, result, hour, showHeatmap, selectedRouteId, playing);
-  }, [hour, result, showHeatmap, selectedRouteId, playing, mapReady]);
+    syncHeatmap(map, result, hour, showHeatmap, selectedRouteId);
+  }, [hour, result, showHeatmap, selectedRouteId, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

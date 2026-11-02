@@ -22,7 +22,7 @@ Open http://localhost:5173. The dev server proxies `/api` to Django.
 
 ```bash
 cd backend && ../.venv/bin/pytest
-cd frontend && npm run build
+cd frontend && npm test && npm run build
 ```
 
 Docker Compose serves the built UI and API together on port 8080:
