@@ -12,15 +12,28 @@ export function addLayers(map: MapLibreMap): void {
   map.addSource("checkpoints", { type: "geojson", data: EMPTY });
 
   map.addLayer({
+    id: "corridor-glow",
+    type: "line",
+    source: "corridor",
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": ["interpolate", ["linear"], ["zoom"], 5, 28, 7, 42, 9, 36, 12, 28],
+      "line-opacity": 0.38,
+      "line-blur": ["interpolate", ["linear"], ["zoom"], 5, 10, 8, 14, 12, 8],
+    },
+  });
+
+  map.addLayer({
     id: "corridor-band",
     type: "line",
     source: "corridor",
     layout: { "line-cap": "round", "line-join": "round" },
     paint: {
       "line-color": ["get", "color"],
-      "line-width": ["interpolate", ["linear"], ["zoom"], 5, 10, 7, 16, 9, 22, 12, 28],
-      "line-opacity": 0.82,
-      "line-blur": 0.5,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 5, 8, 7, 12, 9, 16, 12, 18],
+      "line-opacity": 0.72,
+      "line-blur": 3,
     },
   });
 
@@ -98,8 +111,10 @@ export function syncHeatmap(
   selectedRouteId: string | null,
   playing = false,
 ): void {
-  const layer = map.getLayer("corridor-band");
-  if (layer) map.setLayoutProperty("corridor-band", "visibility", showHeatmap && result ? "visible" : "none");
+  const visible = showHeatmap && result ? "visible" : "none";
+  for (const layerId of ["corridor-glow", "corridor-band"]) {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visible);
+  }
   setData(map, "corridor", result && showHeatmap ? corridorLines(result, hour, selectedRouteId) : EMPTY);
   void playing;
 }
@@ -163,6 +178,7 @@ export function popupNode(feature: MapGeoJSONFeature): HTMLElement {
 }
 
 const RIBBON_SAMPLE_MILES = 8;
+const COLOR_BLEND_MILES = 8;
 
 function focusedRoute(result: Analysis, selectedRouteId: string | null): RouteOption | undefined {
   return (
@@ -174,33 +190,91 @@ function focusedRoute(result: Analysis, selectedRouteId: string | null): RouteOp
 
 function corridorLines(result: Analysis, hour: number, selectedRouteId: string | null): GeoJSON.FeatureCollection {
   const route = focusedRoute(result, selectedRouteId);
-  if (!route) return EMPTY;
+  if (!route || route.geometry.length < 2) return EMPTY;
   const samples = samplesOnRoute(result, route, hour);
+  const vertices: Array<{ coord: number[]; along: number; risk: number }> = [];
+  let along = 0;
+  for (let index = 0; index < route.geometry.length; index += 1) {
+    const coord = route.geometry[index];
+    if (index > 0) along += milesBetween(route.geometry[index - 1], coord);
+    vertices.push({ coord, along, risk: nearestRisk(coord[0], coord[1], samples) });
+  }
   const features: GeoJSON.Feature[] = [];
-  let risk = -1;
+  let color = "";
   let coordinates: number[][] = [];
   const flush = () => {
-    if (risk > 0 && coordinates.length >= 2) {
+    if (color && coordinates.length >= 2) {
       features.push({
         type: "Feature",
-        properties: { risk, color: HEAT_COLORS[risk] ?? "#64748b" },
+        properties: { color },
         geometry: { type: "LineString", coordinates: coordinates.slice() },
       });
     }
   };
-  for (const coord of route.geometry) {
-    const next = nearestRisk(coord[0], coord[1], samples);
-    if (next !== risk) {
+  for (const vertex of vertices) {
+    const next = blendedColor(vertices, vertex.along);
+    if (!next) {
       flush();
-      const join = coordinates.length > 0 ? coordinates[coordinates.length - 1] : coord;
-      coordinates = next > 0 ? [join, coord] : [];
-      risk = next;
-    } else if (risk > 0) {
-      coordinates.push(coord);
+      color = "";
+      coordinates = [];
+      continue;
+    }
+    if (next !== color) {
+      flush();
+      const join = coordinates.length > 0 ? coordinates[coordinates.length - 1] : vertex.coord;
+      coordinates = [join, vertex.coord];
+      color = next;
+    } else {
+      coordinates.push(vertex.coord);
     }
   }
   flush();
   return { type: "FeatureCollection", features };
+}
+
+function blendedColor(vertices: Array<{ along: number; risk: number }>, mile: number): string {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let weight = 0;
+  for (let offset = -COLOR_BLEND_MILES; offset <= COLOR_BLEND_MILES; offset += 1) {
+    const risk = riskAtMile(vertices, mile + offset);
+    const hex = HEAT_COLORS[risk];
+    if (!hex) continue;
+    const share = 1 - Math.abs(offset) / (COLOR_BLEND_MILES + 1);
+    const [r, g, b] = parseHex(hex);
+    red += r * share;
+    green += g * share;
+    blue += b * share;
+    weight += share;
+  }
+  if (weight === 0) return "";
+  return quantizeColor(red / weight, green / weight, blue / weight);
+}
+
+function riskAtMile(vertices: Array<{ along: number; risk: number }>, mile: number): number {
+  let low = 0;
+  let high = vertices.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (vertices[mid].along <= mile) low = mid;
+    else high = mid - 1;
+  }
+  return vertices[low]?.risk ?? 0;
+}
+
+function parseHex(hex: string): [number, number, number] {
+  const value = hex.replace("#", "");
+  return [
+    Number.parseInt(value.slice(0, 2), 16),
+    Number.parseInt(value.slice(2, 4), 16),
+    Number.parseInt(value.slice(4, 6), 16),
+  ];
+}
+
+function quantizeColor(red: number, green: number, blue: number): string {
+  const channel = (value: number) => Math.max(0, Math.min(255, Math.round(value / 16) * 16)).toString(16).padStart(2, "0");
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
 }
 
 function samplesOnRoute(

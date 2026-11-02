@@ -67,7 +67,7 @@ Average risk is the mile-weighted score on a 1 (low) to 5 (no-travel) scale. Gus
 
 No-travel is ordered first because it is the stricter class in the same table. A route that cannot be driven must not win on fewer severe miles. Missing observations are ordered after high miles so a gap cannot look safer than a measured hazard. The comparison table and the recommendation sentence show the rule that actually decided it.
 
-The heatmap is a different question. It colors the selected road at each clock hour from the departure through hour 48, using the same load rules and the same worse-endpoint miles as the ranking. Dragging the slider only swaps preloaded hours. Clicking another route moves the band onto that road. The band is the road itself, so a loop stays on the highway.
+The heatmap is a different question. It colors the selected road at each clock hour from the departure through hour 48, using the same load rules and the same worse-endpoint miles as the ranking. The color fades at the edge and eases from one risk into the next, and a loop stays on the highway. Dragging the slider only swaps preloaded hours. Clicking another route moves the band onto that road.
 
 ## API
 
