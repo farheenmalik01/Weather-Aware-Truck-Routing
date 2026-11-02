@@ -67,7 +67,7 @@ Average risk is the mile-weighted score on a 1 (low) to 5 (no-travel) scale. Gus
 
 No-travel is ordered first because it is the stricter class in the same table. A route that cannot be driven must not win on fewer severe miles. Missing observations are ordered after high miles so a gap cannot look safer than a measured hazard. The comparison table and the recommendation sentence show the rule that actually decided it.
 
-The heatmap is a different question. It colors the corridor at each clock hour from the departure through hour 48, using the same load rules. Dragging the slider only swaps preloaded hours.
+The heatmap is a different question. It colors the selected road at each clock hour from the departure through hour 48, using the same load rules and the same worse-endpoint miles as the ranking. Dragging the slider only swaps preloaded hours. Clicking another route moves the band onto that road. The band is the road itself, so a loop stays on the highway.
 
 ## API
 
@@ -93,4 +93,4 @@ Optional environment variables: `OSRM_BASE_URL`, `PHOTON_BASE_URL`, `OPEN_METEO_
 
 `backend/routing/services` holds the rules. Views validate input and return JSON. `risk.py`, `sampling.py`, `metrics.py`, and `recommendation.py` do not call the network, and the tests cover the band edges, the load cutovers, ETA interpolation, and the ranking order.
 
-The UI keeps the map instance alive. Selecting a route fades the others and frames the stretch where that road leaves them. The forecast slider replaces the corridor points for that hour only, so scrubbing does not restyle the map or call the API again.
+The UI keeps the map instance alive. Selecting a route fades the others and frames the stretch where that road leaves them. The forecast slider replaces that hour's band only, so scrubbing does not restyle the map or call the API again.

@@ -1,9 +1,7 @@
-import { useEffect } from "react";
-
 import { forecastStamp } from "../format";
 import { useTripStore } from "../store";
 
-export const PLAY_STEP_MS = 480;
+export const PLAY_STEP_MS = 220;
 
 export function ForecastSlider() {
   const result = useTripStore((state) => state.result);
@@ -13,20 +11,6 @@ export function ForecastSlider() {
   const setHour = useTripStore((state) => state.setForecastHour);
   const setShow = useTripStore((state) => state.setShowHeatmap);
   const setPlaying = useTripStore((state) => state.setPlaying);
-
-  useEffect(() => {
-    if (!playing || !result) return;
-    const timer = window.setInterval(() => {
-      const state = useTripStore.getState();
-      const max = (state.result?.hour_count ?? 1) - 1;
-      if (state.forecastHour >= max) {
-        state.setPlaying(false);
-        return;
-      }
-      state.setForecastHour(state.forecastHour + 1);
-    }, PLAY_STEP_MS);
-    return () => window.clearInterval(timer);
-  }, [playing, result]);
 
   if (!result) return null;
   const max = result.hour_count - 1;

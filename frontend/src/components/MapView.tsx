@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { forecastStamp } from "../format";
-import { hourSummary } from "../risk";
+import { hourMileSummary } from "../risk";
 import { PLAY_STEP_MS } from "./ForecastSlider";
-import { addLayers, fitResult, fitRoute, playheadLngLat, popupNode, syncHeatmap, syncMap } from "../map/layers";
+import { addLayers, corridorMiles, fitResult, fitRoute, playheadLngLat, popupNode, syncHeatmap, syncMap } from "../map/layers";
 import { useTripStore } from "../store";
 import type { Analysis, Place } from "../types";
 
@@ -19,6 +19,7 @@ export function MapView() {
   const markersRef = useRef<Marker[]>([]);
   const playheadRef = useRef<Marker | null>(null);
   const fittedRef = useRef("");
+  const hourRef = useRef(0);
 
   const result = useTripStore((state) => state.result);
   const selectedRouteId = useTripStore((state) => state.selectedRouteId);
@@ -27,6 +28,7 @@ export function MapView() {
   const playing = useTripStore((state) => state.playing);
   const loading = useTripStore((state) => state.loading);
   const zoomRouteId = useTripStore((state) => state.zoomRouteId);
+  hourRef.current = hour;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -88,12 +90,15 @@ export function MapView() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
     syncHeatmap(map, result, hour, showHeatmap, selectedRouteId, playing);
-    if (!result || !showHeatmap) {
+  }, [hour, result, showHeatmap, selectedRouteId, playing, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !result || !showHeatmap) {
       playheadRef.current?.remove();
       playheadRef.current = null;
       return;
     }
-    let frame = 0;
     const place = (at: number) => {
       const lngLat = playheadLngLat(result, selectedRouteId, at);
       if (!lngLat) return;
@@ -106,17 +111,41 @@ export function MapView() {
       }
       playheadRef.current.getElement().classList.toggle("playing", playing);
     };
-    place(hour);
-    if (!playing || hour >= result.hour_count - 1) return;
+    if (!playing) {
+      place(hourRef.current);
+      return;
+    }
+    const origin = hourRef.current;
     const started = performance.now();
+    const max = result.hour_count - 1;
+    let frame = 0;
+    let lastWhole = Math.floor(origin);
     const step = (now: number) => {
-      const t = Math.min(1, (now - started) / PLAY_STEP_MS);
-      place(hour + t);
-      if (t < 1) frame = window.requestAnimationFrame(step);
+      const at = Math.min(max, origin + (now - started) / PLAY_STEP_MS);
+      place(at);
+      const whole = Math.min(max, Math.floor(at));
+      if (whole !== lastWhole) {
+        lastWhole = whole;
+        useTripStore.getState().setForecastHour(whole);
+      }
+      if (at < max) {
+        frame = window.requestAnimationFrame(step);
+        return;
+      }
+      useTripStore.getState().setForecastHour(max);
+      useTripStore.getState().setPlaying(false);
     };
     frame = window.requestAnimationFrame(step);
     return () => window.cancelAnimationFrame(frame);
-  }, [hour, result, showHeatmap, selectedRouteId, playing, mapReady]);
+  }, [playing, result, showHeatmap, selectedRouteId, mapReady]);
+
+  useEffect(() => {
+    if (playing) return;
+    const map = mapRef.current;
+    if (!map || !mapReady || !result || !showHeatmap || !playheadRef.current) return;
+    const lngLat = playheadLngLat(result, selectedRouteId, hour);
+    if (lngLat) playheadRef.current.setLngLat(lngLat);
+  }, [hour, playing, result, showHeatmap, selectedRouteId, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -132,7 +161,7 @@ export function MapView() {
       {result && showHeatmap && (
         <div key={hour} className={`hour-badge${playing ? " playing" : ""}`}>
           <strong>+{hour}h</strong>
-          <span>{hourSummary(result.heatmap.map((point) => point.risks[hour] ?? 0))}</span>
+          <span>{hourMileSummary(corridorMiles(result, selectedRouteId, hour))}</span>
           <span>{forecastStamp(result.departure, hour)}</span>
         </div>
       )}

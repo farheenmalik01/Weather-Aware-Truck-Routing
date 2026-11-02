@@ -1,4 +1,4 @@
-import type { ExpressionSpecification, GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature } from "maplibre-gl";
 
 import { formatEta, formatRate, formatWind } from "../format";
 import { HEAT_COLORS, RISK_COLORS, RISK_LABELS } from "../risk";
@@ -11,21 +11,18 @@ export function addLayers(map: MapLibreMap): void {
   map.addSource("routes", { type: "geojson", data: EMPTY });
   map.addSource("checkpoints", { type: "geojson", data: EMPTY });
 
-  for (const risk of HEAT_RISKS) {
-    map.addLayer({
-      id: heatLayerId(risk),
-      type: "heatmap",
-      source: "corridor",
-      filter: ["==", ["get", "risk"], risk],
-      paint: {
-        "heatmap-weight": 1,
-        "heatmap-intensity": 0.85,
-        "heatmap-radius": heatRadius(false),
-        "heatmap-opacity": 0.8,
-        "heatmap-color": heatColor(HEAT_COLORS[risk]),
-      },
-    });
-  }
+  map.addLayer({
+    id: "corridor-band",
+    type: "line",
+    source: "corridor",
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": ["interpolate", ["linear"], ["zoom"], 5, 10, 7, 16, 9, 22, 12, 28],
+      "line-opacity": 0.82,
+      "line-blur": 0.5,
+    },
+  });
 
   map.addLayer({
     id: "routes-casing",
@@ -98,32 +95,35 @@ export function syncHeatmap(
   result: Analysis | null,
   hour: number,
   showHeatmap: boolean,
-  _selectedRouteId: string | null,
+  selectedRouteId: string | null,
   playing = false,
 ): void {
-  setData(map, "corridor", result && showHeatmap ? heatPoints(result, hour) : EMPTY);
-  const visible = showHeatmap && result ? "visible" : "none";
-  for (const risk of HEAT_RISKS) {
-    const layerId = heatLayerId(risk);
-    if (!map.getLayer(layerId)) continue;
-    map.setLayoutProperty(layerId, "visibility", visible);
+  const layer = map.getLayer("corridor-band");
+  if (layer) map.setLayoutProperty("corridor-band", "visibility", showHeatmap && result ? "visible" : "none");
+  setData(map, "corridor", result && showHeatmap ? corridorLines(result, hour, selectedRouteId) : EMPTY);
+  void playing;
+}
+
+export function corridorMiles(result: Analysis, selectedRouteId: string | null, hour: number): number[] {
+  const miles = [0, 0, 0, 0, 0, 0];
+  const route = focusedRoute(result, selectedRouteId);
+  if (!route || route.geometry.length < 2) return miles;
+  const samples = samplesOnRoute(result, route, hour);
+  let previous = route.geometry[0];
+  let previousRisk = nearestRisk(previous[0], previous[1], samples);
+  for (let index = 1; index < route.geometry.length; index += 1) {
+    const next = route.geometry[index];
+    const risk = nearestRisk(next[0], next[1], samples);
+    const worse = Math.max(previousRisk, risk);
+    if (worse >= 1 && worse <= 5) miles[worse] += milesBetween(previous, next);
+    previous = next;
+    previousRisk = risk;
   }
-  if (heatPlaying === playing) return;
-  heatPlaying = playing;
-  for (const risk of HEAT_RISKS) {
-    const layerId = heatLayerId(risk);
-    if (!map.getLayer(layerId)) continue;
-    map.setPaintProperty(layerId, "heatmap-radius", heatRadius(playing));
-    map.setPaintProperty(layerId, "heatmap-opacity", playing ? 0.9 : 0.8);
-    map.setPaintProperty(layerId, "heatmap-intensity", playing ? 1 : 0.85);
-  }
+  return miles;
 }
 
 export function playheadLngLat(result: Analysis, selectedRouteId: string | null, hour: number): [number, number] | null {
-  const route =
-    result.routes.find((item) => item.id === selectedRouteId) ??
-    result.routes.find((item) => item.recommended) ??
-    result.routes[0];
+  const route = focusedRoute(result, selectedRouteId);
   if (!route || route.geometry.length < 2) return null;
   const span = Math.max(result.hour_count - 1, 1);
   return pointAlong(route.geometry, hour / span);
@@ -162,71 +162,77 @@ export function popupNode(feature: MapGeoJSONFeature): HTMLElement {
   return root;
 }
 
-const HEAT_RISKS = [1, 2, 3, 4, 5] as const;
+const RIBBON_SAMPLE_MILES = 8;
 
-// On-screen radius of one forecast sample. Kept to a few miles of road so
-// neighboring samples meet in a ribbon. A short trip is drawn at a higher
-// zoom, and a large pixel radius there becomes the county-sized blobs.
-const CORRIDOR_RADIUS_PX = {
-  zoom: [6, 8, 10, 12],
-  still: [18, 32, 48, 70],
-  playing: [20, 36, 54, 78],
-} as const;
-
-let heatPlaying = false;
-
-function heatLayerId(risk: number): string {
-  return `heat-${risk}`;
+function focusedRoute(result: Analysis, selectedRouteId: string | null): RouteOption | undefined {
+  return (
+    result.routes.find((item) => item.id === selectedRouteId) ??
+    result.routes.find((item) => item.recommended) ??
+    result.routes[0]
+  );
 }
 
-function heatRadius(playing: boolean): ExpressionSpecification {
-  const pixels = playing ? CORRIDOR_RADIUS_PX.playing : CORRIDOR_RADIUS_PX.still;
-  const expression: Array<string | number | string[]> = ["interpolate", ["linear"], ["zoom"]];
-  CORRIDOR_RADIUS_PX.zoom.forEach((zoom, index) => {
-    expression.push(zoom, pixels[index]);
-  });
-  return expression as ExpressionSpecification;
-}
-
-function heatColor(color: string): ExpressionSpecification {
-  return [
-    "interpolate",
-    ["linear"],
-    ["heatmap-density"],
-    0,
-    "rgba(0,0,0,0)",
-    0.15,
-    withAlpha(color, 0.35),
-    0.55,
-    color,
-    1,
-    color,
-  ] as ExpressionSpecification;
-}
-
-function withAlpha(hex: string, alpha: number): string {
-  const value = hex.replace("#", "");
-  const red = Number.parseInt(value.slice(0, 2), 16);
-  const green = Number.parseInt(value.slice(2, 4), 16);
-  const blue = Number.parseInt(value.slice(4, 6), 16);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-
-function heatPoints(result: Analysis, hour: number): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: result.heatmap.flatMap((point) => {
-      const risk = point.risks[hour] ?? 0;
-      if (risk <= 0) return [];
-      return [
-        {
-          type: "Feature" as const,
-          properties: { risk },
-          geometry: { type: "Point" as const, coordinates: [point.lon, point.lat] },
-        },
-      ];
-    }),
+function corridorLines(result: Analysis, hour: number, selectedRouteId: string | null): GeoJSON.FeatureCollection {
+  const route = focusedRoute(result, selectedRouteId);
+  if (!route) return EMPTY;
+  const samples = samplesOnRoute(result, route, hour);
+  const features: GeoJSON.Feature[] = [];
+  let risk = -1;
+  let coordinates: number[][] = [];
+  const flush = () => {
+    if (risk > 0 && coordinates.length >= 2) {
+      features.push({
+        type: "Feature",
+        properties: { risk, color: HEAT_COLORS[risk] ?? "#64748b" },
+        geometry: { type: "LineString", coordinates: coordinates.slice() },
+      });
+    }
   };
+  for (const coord of route.geometry) {
+    const next = nearestRisk(coord[0], coord[1], samples);
+    if (next !== risk) {
+      flush();
+      const join = coordinates.length > 0 ? coordinates[coordinates.length - 1] : coord;
+      coordinates = next > 0 ? [join, coord] : [];
+      risk = next;
+    } else if (risk > 0) {
+      coordinates.push(coord);
+    }
+  }
+  flush();
+  return { type: "FeatureCollection", features };
+}
+
+function samplesOnRoute(
+  result: Analysis,
+  route: RouteOption,
+  hour: number,
+): Array<{ lon: number; lat: number; risk: number }> {
+  return result.heatmap.flatMap((point) => {
+    const risk = point.risks[hour] ?? 0;
+    if (risk <= 0) return [];
+    if (nearestMiles([point.lon, point.lat], route.geometry) > RIBBON_SAMPLE_MILES) return [];
+    return [{ lon: point.lon, lat: point.lat, risk }];
+  });
+}
+
+function nearestRisk(
+  lon: number,
+  lat: number,
+  samples: Array<{ lon: number; lat: number; risk: number }>,
+): number {
+  let best = RIBBON_SAMPLE_MILES;
+  let risk = 0;
+  for (const sample of samples) {
+    const span = Math.max(Math.abs(sample.lon - lon), Math.abs(sample.lat - lat)) * 69;
+    if (span >= best) continue;
+    const miles = milesBetween([lon, lat], [sample.lon, sample.lat]);
+    if (miles < best) {
+      best = miles;
+      risk = sample.risk;
+    }
+  }
+  return risk;
 }
 
 function pointAlong(coordinates: number[][], fraction: number): [number, number] {

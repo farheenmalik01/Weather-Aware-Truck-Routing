@@ -28,6 +28,21 @@ export const HEAT_COLORS: Record<number, string> = {
 
 const HEAT_NAMES = ["", "low", "moderate", "high", "severe", "no-travel"];
 
+const MILE_NAMES = ["", "low", "moderate", "high", "severe", "no-travel"];
+
+export function hourMileSummary(miles: number[]): string {
+  let known = 0;
+  for (let code = 1; code <= 5; code += 1) known += miles[code] ?? 0;
+  if (known < 0.5) return "No forecast";
+  if ((miles[1] ?? 0) >= known - 0.5) return "All low";
+  const parts: string[] = [];
+  for (let code = 5; code >= 1; code -= 1) {
+    const milesAt = miles[code] ?? 0;
+    if (milesAt >= 0.5) parts.push(`${Math.round(milesAt)} ${MILE_NAMES[code]} mi`);
+  }
+  return parts.join(" · ");
+}
+
 export function hourSummary(codes: number[]): string {
   const counts = [0, 0, 0, 0, 0, 0];
   for (const code of codes) {
