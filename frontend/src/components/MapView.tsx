@@ -1,8 +1,9 @@
 import maplibregl, { type Map as MapLibreMap, type Marker } from "maplibre-gl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import { addLayers, fitResult, fitRoute, popupNode, syncHeatmap, syncMap } from "../map/layers";
+import { forecastStamp } from "../format";
+import { addLayers, fitResult, fitRoute, playheadLngLat, popupNode, syncHeatmap, syncMap } from "../map/layers";
 import { useTripStore } from "../store";
 import type { Analysis, Place } from "../types";
 
@@ -12,13 +13,16 @@ export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef(false);
+  const [mapReady, setMapReady] = useState(false);
   const markersRef = useRef<Marker[]>([]);
+  const playheadRef = useRef<Marker | null>(null);
   const fittedRef = useRef("");
 
   const result = useTripStore((state) => state.result);
   const selectedRouteId = useTripStore((state) => state.selectedRouteId);
   const hour = useTripStore((state) => state.forecastHour);
   const showHeatmap = useTripStore((state) => state.showHeatmap);
+  const playing = useTripStore((state) => state.playing);
   const loading = useTripStore((state) => state.loading);
   const zoomRouteId = useTripStore((state) => state.zoomRouteId);
 
@@ -35,8 +39,9 @@ export function MapView() {
     map.on("load", () => {
       addLayers(map);
       readyRef.current = true;
+      setMapReady(true);
       const state = useTripStore.getState();
-      syncMap(map, state.result, state.selectedRouteId, state.forecastHour, state.showHeatmap);
+      syncMap(map, state.result, state.selectedRouteId, state.forecastHour, state.showHeatmap, state.playing);
       if (state.result) {
         markersRef.current = placePins(map, markersRef.current, state.result);
         fitResult(map, state.result);
@@ -50,16 +55,18 @@ export function MapView() {
     return () => {
       observer.disconnect();
       markersRef.current.forEach((marker) => marker.remove());
+      playheadRef.current?.remove();
       map.remove();
       mapRef.current = null;
       readyRef.current = false;
+      setMapReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    syncMap(map, result, selectedRouteId, hour, showHeatmap);
+    syncMap(map, result, selectedRouteId, hour, showHeatmap, playing);
     if (!result) {
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
@@ -73,13 +80,28 @@ export function MapView() {
       fitResult(map, result);
     }
     // Hour changes repaint only the corridor, in the effect below.
-  }, [result, selectedRouteId, showHeatmap]);
+  }, [result, selectedRouteId, showHeatmap, playing]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    syncHeatmap(map, result, hour, showHeatmap, selectedRouteId);
-  }, [hour, result, showHeatmap, selectedRouteId]);
+    if (!map || !mapReady) return;
+    syncHeatmap(map, result, hour, showHeatmap, selectedRouteId, playing);
+    if (!result || !showHeatmap) {
+      playheadRef.current?.remove();
+      playheadRef.current = null;
+      return;
+    }
+    const lngLat = playheadLngLat(result, selectedRouteId, hour);
+    if (!lngLat) return;
+    if (!playheadRef.current) {
+      const dot = document.createElement("div");
+      dot.className = "playhead";
+      playheadRef.current = new maplibregl.Marker({ element: dot }).setLngLat(lngLat).addTo(map);
+    } else {
+      playheadRef.current.setLngLat(lngLat);
+    }
+    playheadRef.current.getElement().classList.toggle("playing", playing);
+  }, [hour, result, showHeatmap, selectedRouteId, playing, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -92,6 +114,12 @@ export function MapView() {
   return (
     <div className="map-frame">
       <div ref={containerRef} className="map" />
+      {result && showHeatmap && (
+        <div key={hour} className={`hour-badge${playing ? " playing" : ""}`}>
+          <strong>+{hour}h</strong>
+          <span>{forecastStamp(result.departure, hour)}</span>
+        </div>
+      )}
       {loading && <div className="map-status">Sampling weather along the routes…</div>}
       {!result && !loading && (
         <div className="map-hint">
@@ -108,18 +136,24 @@ function bindPointer(map: MapLibreMap) {
     const checkpoint = map.queryRenderedFeatures(event.point, { layers: ["checkpoints"] })[0];
     if (checkpoint) {
       const routeId = checkpoint.properties?.routeId;
-      if (typeof routeId === "string" && routeId) useTripStore.getState().selectRoute(routeId);
+      if (typeof routeId === "string" && routeId) focusRoute(routeId);
       new maplibregl.Popup({ closeButton: true, maxWidth: "280px", className: "wx-popup" })
         .setLngLat(event.lngLat)
         .setDOMContent(popupNode(checkpoint))
         .addTo(map);
       return;
     }
-    const route = map.queryRenderedFeatures(event.point, { layers: ["routes-line"] })[0];
-    const routeId = route?.properties?.id;
-    if (typeof routeId === "string") useTripStore.getState().selectRoute(routeId);
+    const hits = map.queryRenderedFeatures(event.point, { layers: ["routes-line", "routes-casing"] });
+    const ids: string[] = [];
+    for (const hit of hits) {
+      const id = hit.properties?.id;
+      if (typeof id === "string" && !ids.includes(id)) ids.push(id);
+    }
+    if (ids.length === 0) return;
+    const current = useTripStore.getState().selectedRouteId;
+    focusRoute(ids.find((id) => id !== current) ?? ids[0]);
   });
-  for (const layer of ["routes-line", "checkpoints"]) {
+  for (const layer of ["routes-line", "routes-casing", "checkpoints"]) {
     map.on("mouseenter", layer, () => {
       map.getCanvas().style.cursor = "pointer";
     });
@@ -127,6 +161,12 @@ function bindPointer(map: MapLibreMap) {
       map.getCanvas().style.cursor = "";
     });
   }
+}
+
+function focusRoute(routeId: string) {
+  const state = useTripStore.getState();
+  if (state.selectedRouteId === routeId) return;
+  state.requestZoom(routeId);
 }
 
 function resultKey(result: Analysis): string {

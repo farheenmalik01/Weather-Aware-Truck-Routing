@@ -22,7 +22,7 @@ export function ForecastSlider() {
         return;
       }
       state.setForecastHour(state.forecastHour + 1);
-    }, 700);
+    }, 480);
     return () => window.clearInterval(timer);
   }, [playing, result]);
 
@@ -31,7 +31,7 @@ export function ForecastSlider() {
   return (
     <div className="forecast">
       <div className="forecast-top">
-        <label htmlFor="forecast-hour">Corridor forecast</label>
+        <label htmlFor="forecast-hour">Weather at this hour</label>
         <strong>+{hour}h</strong>
         <span>{forecastStamp(result.departure, hour)}</span>
         <button type="button" className="text-button" onClick={() => setPlaying(!playing)} disabled={!showHeatmap}>
