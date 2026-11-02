@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIST = os.environ.get("FRONTEND_DIST", "")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-truck-routing-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"

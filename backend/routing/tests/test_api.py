@@ -12,6 +12,29 @@ def api():
 
 
 @pytest.mark.django_db
+def test_frontend_is_absent_until_a_build_is_configured(api):
+    response = api.get("/")
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_frontend_serves_the_built_page(api, settings, tmp_path):
+    (tmp_path / "index.html").write_text("<!doctype html><title>truck</title>")
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "app.js").write_text("console.log(1)")
+    settings.FRONTEND_DIST = str(tmp_path)
+
+    page = api.get("/")
+    assert page.status_code == 200
+    assert b"truck" in b"".join(page.streaming_content)
+    script = api.get("/assets/app.js")
+    assert script.status_code == 200
+    assert b"console.log" in b"".join(script.streaming_content)
+    assert api.get("/api/health/").status_code == 200
+
+
+@pytest.mark.django_db
 def test_health(api):
     response = api.get("/api/health/")
     assert response.status_code == 200
