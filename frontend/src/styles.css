@@ -61,17 +61,21 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 .sidebar {
   min-height: 0;
   height: 100%;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  scrollbar-gutter: stable;
 }
-.sidebar > .trip-form { flex: 0 0 auto; }
-.sidebar > .empty-panel,
+.sidebar > .trip-form,
 .sidebar > .results {
+  flex: 0 0 auto;
+}
+.sidebar > .empty-panel {
   flex: 1 1 auto;
-  min-height: 0;
 }
 .map-pane, .map-frame, .map { position: absolute; inset: 0; }
 .map-pane { position: relative; min-height: 0; background: #d5dee6; }
@@ -257,7 +261,6 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
   display: grid;
   gap: 12px;
   align-content: start;
-  overflow: auto;
 }
 .reason {
   margin: 0;
@@ -328,7 +331,12 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 .route-card dd { margin: 2px 0 0; font-family: var(--mono); font-size: 12px; }
 .route-card .text-button { margin-top: 2px; }
 
-.comparison { display: grid; gap: 10px; overflow-x: auto; }
+.comparison {
+  display: grid;
+  gap: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .comparison table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .comparison th, .comparison td {
   padding: 7px 6px;
@@ -540,40 +548,36 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
 .wx-popup .maplibregl-popup-content { border-radius: 12px; padding: 12px; }
 
 @media (max-width: 1100px) {
-  .shell { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
-  .brand span { display: none; }
-}
-
-@media (max-width: 900px) {
   .app {
     height: auto;
     min-height: 100%;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
   }
   .topbar {
     flex-wrap: wrap;
     padding: 12px 16px;
     gap: 8px;
   }
-  .topbar-note { display: none; }
+  .topbar-note,
+  .brand span { display: none; }
   .shell {
     height: auto;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(42vh, 520px) auto;
+    grid-template-rows: minmax(280px, 46vh) auto;
   }
   .sidebar {
     height: auto;
     max-height: none;
     overflow: visible;
   }
-  .sidebar > .empty-panel,
-  .sidebar > .results {
+  .sidebar > .empty-panel {
     flex: 0 0 auto;
   }
   .map-pane {
     order: -1;
-    min-height: 42vh;
-    height: 100%;
+    position: relative;
+    min-height: 280px;
+    height: 46vh;
   }
   .legend {
     flex-wrap: wrap;
@@ -597,8 +601,11 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
   .examples { gap: 6px; }
   .chip { font-size: 11px; }
   .brand strong { font-size: 14px; }
-  .shell { grid-template-rows: minmax(38vh, 420px) auto; }
-  .map-pane { min-height: 38vh; }
+  .shell { grid-template-rows: minmax(240px, 40vh) auto; }
+  .map-pane {
+    min-height: 240px;
+    height: 40vh;
+  }
   .legend {
     left: 10px;
     right: 54px;
@@ -613,4 +620,5 @@ h2 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: upperca
     transform: none;
   }
   .hour-badge.playing { transform: none; }
+  .comparison table { min-width: 420px; }
 }

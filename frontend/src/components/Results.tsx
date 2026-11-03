@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { useTripStore } from "../store";
 import { CheckpointTable } from "./CheckpointTable";
 import { ComparisonTable } from "./ComparisonTable";
@@ -6,6 +8,13 @@ import { RouteCard } from "./RouteCard";
 export function Results() {
   const result = useTripStore((state) => state.result);
   const selectedRouteId = useTripStore((state) => state.selectedRouteId);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!result || !panelRef.current) return;
+    panelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [result]);
+
   if (!result) {
     return (
       <section className="panel empty-panel">
@@ -20,7 +29,7 @@ export function Results() {
   }
   const selected = result.routes.find((route) => route.id === selectedRouteId) ?? result.routes[0];
   return (
-    <section className="results">
+    <section ref={panelRef} className="results">
       {result.all_routes_blocked && (
         <p className="banner">Every route crosses no-travel weather. The highlighted option is the least unsafe.</p>
       )}
